@@ -1,5 +1,3 @@
-// InjectorGUI.h
-
 #ifndef INJECTORGUI_H
 #define INJECTORGUI_H
 
@@ -26,5 +24,9 @@ bool IsDLLFile(const char* filePath);
 bool IsProcessRunning(const char* processName);
 DWORD GetProcId(const char* procName);
 bool InjectDLL(const char* dllPath, const char* procName);
+bool IsSystemProcess(const std::string& processName);
+
+// Extern Declarations
+extern const std::vector<std::string> systemProcesses;
 
 #endif // INJECTORGUI_H

@@ -134,7 +134,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="InjectorGUI.cpp" />
-    <ClCompile Include="SimpleDLLInjector.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="InjectorGUI.rc" />

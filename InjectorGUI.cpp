@@ -1,4 +1,19 @@
 #include "InjectorGUI.h"
+#include <psapi.h>
+#include <algorithm>
+
+// List of known system processes to exclude
+const std::vector<std::string> systemProcesses = {
+    "Registry", "System", "smss.exe", "csrss.exe", "wininit.exe", "services.exe",
+    "lsass.exe", "svchost.exe", "winlogon.exe", "explorer.exe", "spoolsv.exe",
+    "taskhost.exe", "dwm.exe", "audiodg.exe", "taskeng.exe", "sppsvc.exe",
+    "wlanext.exe", "conhost.exe", "SearchIndexer.exe", "dllhost.exe"
+};
+
+bool IsSystemProcess(const std::string& processName)
+{
+    return std::find(systemProcesses.begin(), systemProcesses.end(), processName) != systemProcesses.end();
+}
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow)
 {
@@ -70,13 +85,21 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_COMMAND:
-        if (LOWORD(wParam) == IDC_BUTTON_BROWSE)
+        switch (LOWORD(wParam))
         {
+        case IDC_BUTTON_BROWSE:
             BrowseForDLL(hwnd, hTextBoxPath);
-        }
-        else if (LOWORD(wParam) == IDC_BUTTON_ACTION)
-        {
+            break;
+        case IDC_BUTTON_ACTION:
             OnInjectButtonClick(hwnd);
+            break;
+        case IDC_COMBOBOX_PROCESSES:
+            if (HIWORD(wParam) == CBN_DROPDOWN)
+            {
+                SendMessage(hComboBoxProcesses, CB_RESETCONTENT, 0, 0);
+                LoadProcesses(hComboBoxProcesses);
+            }
+            break;
         }
         break;
 
@@ -92,21 +115,22 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 void LoadProcesses(HWND hwndComboBox)
 {
-    HANDLE hProcessSnap;
-    PROCESSENTRY32 pe32;
-    pe32.dwSize = sizeof(PROCESSENTRY32);
-
-    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hProcessSnap == INVALID_HANDLE_VALUE)
     {
         return;
     }
 
+    PROCESSENTRY32 pe32 = { sizeof(PROCESSENTRY32) };
     if (Process32First(hProcessSnap, &pe32))
     {
         do
         {
-            SendMessageA(hwndComboBox, CB_ADDSTRING, 0, (LPARAM)pe32.szExeFile);
+            std::string processName = pe32.szExeFile;
+            if (!IsSystemProcess(processName))
+            {
+                SendMessageA(hwndComboBox, CB_ADDSTRING, 0, (LPARAM)pe32.szExeFile);
+            }
         } while (Process32Next(hProcessSnap, &pe32));
     }
 
@@ -115,8 +139,8 @@ void LoadProcesses(HWND hwndComboBox)
 
 void OnInjectButtonClick(HWND hwnd)
 {
-    char dllPath[260];
-    GetWindowTextA(GetDlgItem(hwnd, IDC_TEXTBOX_PATH), dllPath, 260);
+    char dllPath[MAX_PATH];
+    GetWindowTextA(GetDlgItem(hwnd, IDC_TEXTBOX_PATH), dllPath, MAX_PATH);
 
     if (!IsDLLFile(dllPath))
     {
@@ -124,8 +148,8 @@ void OnInjectButtonClick(HWND hwnd)
         return;
     }
 
-    char processName[260];
-    GetWindowTextA(GetDlgItem(hwnd, IDC_COMBOBOX_PROCESSES), processName, 260);
+    char processName[MAX_PATH];
+    GetWindowTextA(GetDlgItem(hwnd, IDC_COMBOBOX_PROCESSES), processName, MAX_PATH);
 
     if (strlen(processName) == 0)
     {
@@ -139,29 +163,29 @@ void OnInjectButtonClick(HWND hwnd)
         return;
     }
 
-    // Here you can add the code to inject the DLL into the selected process
-    MessageBoxA(hwnd, (std::string("Injecting ") + dllPath + " into " + processName).c_str(), "Info", MB_OK | MB_ICONINFORMATION);
+    if (InjectDLL(dllPath, processName))
+    {
+        MessageBoxA(hwnd, "DLL successfully injected.", "Info", MB_OK | MB_ICONINFORMATION);
+    }
+    else
+    {
+        MessageBoxA(hwnd, "DLL injection failed.", "Error", MB_OK | MB_ICONERROR);
+    }
 }
 
 void BrowseForDLL(HWND hwnd, HWND hTextBoxPath)
 {
-    OPENFILENAMEA ofn;
-    char szFile[260];
+    OPENFILENAMEA ofn = { sizeof(OPENFILENAMEA) };
+    char szFile[MAX_PATH] = { 0 };
 
-    ZeroMemory(&ofn, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hwnd;
     ofn.lpstrFile = szFile;
-    ofn.lpstrFile[0] = '\0';
     ofn.nMaxFile = sizeof(szFile);
-    ofn.lpstrFilter = "All\0*.*\0Text\0*.TXT\0";
+    ofn.lpstrFilter = "DLL Files\0*.dll\0All Files\0*.*\0";
     ofn.nFilterIndex = 1;
-    ofn.lpstrFileTitle = NULL;
-    ofn.nMaxFileTitle = 0;
-    ofn.lpstrInitialDir = NULL;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
-    if (GetOpenFileNameA(&ofn) == TRUE)
+    if (GetOpenFileNameA(&ofn))
     {
         SetWindowTextA(hTextBoxPath, ofn.lpstrFile);
     }
@@ -175,16 +199,13 @@ bool IsDLLFile(const char* filePath)
 
 bool IsProcessRunning(const char* processName)
 {
-    HANDLE hProcessSnap;
-    PROCESSENTRY32 pe32;
-    pe32.dwSize = sizeof(PROCESSENTRY32);
-
-    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hProcessSnap == INVALID_HANDLE_VALUE)
     {
         return false;
     }
 
+    PROCESSENTRY32 pe32 = { sizeof(PROCESSENTRY32) };
     bool processFound = false;
     if (Process32First(hProcessSnap, &pe32))
     {
@@ -200,4 +221,71 @@ bool IsProcessRunning(const char* processName)
 
     CloseHandle(hProcessSnap);
     return processFound;
+}
+
+DWORD GetProcId(const char* procName)
+{
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap == INVALID_HANDLE_VALUE)
+    {
+        return 0;
+    }
+
+    PROCESSENTRY32 procEntry = { sizeof(PROCESSENTRY32) };
+    DWORD procId = 0;
+    if (Process32First(hSnap, &procEntry))
+    {
+        do
+        {
+            if (_stricmp(procEntry.szExeFile, procName) == 0)
+            {
+                procId = procEntry.th32ProcessID;
+                break;
+            }
+        } while (Process32Next(hSnap, &procEntry));
+    }
+
+    CloseHandle(hSnap);
+    return procId;
+}
+
+bool InjectDLL(const char* dllPath, const char* procName)
+{
+    DWORD procId = GetProcId(procName);
+    if (!procId)
+    {
+        return false;
+    }
+
+    HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, procId);
+    if (!hProc)
+    {
+        return false;
+    }
+
+    void* loc = VirtualAllocEx(hProc, NULL, MAX_PATH, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!loc)
+    {
+        CloseHandle(hProc);
+        return false;
+    }
+
+    if (!WriteProcessMemory(hProc, loc, dllPath, strlen(dllPath) + 1, NULL))
+    {
+        VirtualFreeEx(hProc, loc, 0, MEM_RELEASE);
+        CloseHandle(hProc);
+        return false;
+    }
+
+    HANDLE hThread = CreateRemoteThread(hProc, NULL, 0, (LPTHREAD_START_ROUTINE)LoadLibraryA, loc, 0, NULL);
+    if (!hThread)
+    {
+        VirtualFreeEx(hProc, loc, 0, MEM_RELEASE);
+        CloseHandle(hProc);
+        return false;
+    }
+
+    CloseHandle(hThread);
+    CloseHandle(hProc);
+    return true;
 }
