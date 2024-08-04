@@ -260,7 +260,7 @@ bool InjectDLL(const char* dllPath, const char* procName)
     }
 
     HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, procId);
-    if (!hProc)
+    if (!hProc || hProc == INVALID_HANDLE_VALUE)
     {
         return false;
     }
