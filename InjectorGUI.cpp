@@ -1,13 +1,15 @@
 #include "InjectorGUI.h"
-#include <psapi.h>
-#include <algorithm>
 
 // List of known system processes to exclude
 const std::vector<std::string> systemProcesses = {
     "Registry", "System", "smss.exe", "csrss.exe", "wininit.exe", "services.exe",
     "lsass.exe", "svchost.exe", "winlogon.exe", "explorer.exe", "spoolsv.exe",
     "taskhost.exe", "dwm.exe", "audiodg.exe", "taskeng.exe", "sppsvc.exe",
-    "wlanext.exe", "conhost.exe", "SearchIndexer.exe", "dllhost.exe"
+    "wlanext.exe", "conhost.exe", "SearchIndexer.exe", "dllhost.exe", "[System Process]",
+    "Secure System", "fontdrvhost.exe", "System Idle Process", "Idle", "System Interrupts",
+    "Interrupts", "RuntimeBroker.exe", "sihost.exe", "taskhostw.exe", "ctfmon.exe",
+    "ShellExperienceHost.exe", "SearchUI.exe", "StartMenuExperienceHost.exe",
+    "SystemSettings.exe", "TextInputHost.exe", "vmms.exe", "LsaIso.exe", "Memory Compression"
 };
 
 bool IsSystemProcess(const std::string& processName)
@@ -15,7 +17,7 @@ bool IsSystemProcess(const std::string& processName)
     return std::find(systemProcesses.begin(), systemProcesses.end(), processName) != systemProcesses.end();
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow)
+int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR pCmdLine, _In_ int nCmdShow)
 {
     const char CLASS_NAME[] = "Sample Window Class";
 
@@ -75,7 +77,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         hLabelProcesses = CreateWindowA("STATIC", "Process", WS_CHILD | WS_VISIBLE,
             10, 40, 60, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-        hComboBoxProcesses = CreateWindowA("COMBOBOX", NULL, CBS_DROPDOWN | WS_CHILD | WS_VISIBLE,
+        hComboBoxProcesses = CreateWindowA("COMBOBOX", NULL, CBS_DROPDOWN | WS_CHILD | WS_VISIBLE | WS_VSCROLL,
             80, 40, 275, 200, hwnd, (HMENU)IDC_COMBOBOX_PROCESSES, GetModuleHandle(NULL), NULL);
 
         hButtonAction = CreateWindowA("BUTTON", "Inject", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
@@ -129,7 +131,7 @@ void LoadProcesses(HWND hwndComboBox)
             std::string processName = pe32.szExeFile;
             if (!IsSystemProcess(processName))
             {
-                SendMessageA(hwndComboBox, CB_ADDSTRING, 0, (LPARAM)pe32.szExeFile);
+                SendMessageA(hwndComboBox, CB_ADDSTRING, 0, (LPARAM)processName.c_str());
             }
         } while (Process32Next(hProcessSnap, &pe32));
     }

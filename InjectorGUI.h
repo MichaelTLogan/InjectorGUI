@@ -6,6 +6,8 @@
 #include <tlhelp32.h>
 #include <string>
 #include <vector>
+#include <psapi.h>
+#include <algorithm>
 
 #include "Resource.h"
 
